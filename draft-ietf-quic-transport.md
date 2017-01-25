@@ -1270,7 +1270,7 @@ The fields in the WINDOW_UPDATE frame are as follows:
   flow control, the cumulative number of bytes which can be sent on all
   currently open streams.
 
-## REQUEST_RST Frame {#frame-request-rst}
+### REQUEST_RST Frame {#frame-request-rst}
 
 An endpoint may use a REQUEST_RST frame (type=0x08) to request a peer to
 abruptly terminate a stream.  The frame is as follows:
@@ -1507,7 +1507,7 @@ The STOP_WAITING frame contains a single field:
   to be irrecoverably lost and MUST NOT report those packets as missing in
   subsequent ACKs.
 
-## PADDING Frame {#frame-padding}
+### PADDING Frame {#frame-padding}
 
 The PADDING frame (type=0x00) has no semantic value.  PADDING frames can be used
 to increase the size of a packet.  Padding can be used to increase an initial
@@ -1518,7 +1518,7 @@ A PADDING frame has no content.  That is, a PADDING frame consists of the single
 octet that identifies the frame as a PADDING frame.
 
 
-## PING frame {#frame-ping}
+### PING frame {#frame-ping}
 
 Endpoints can use PING frames (type=0x07) to verify that their peers are still
 alive or to check reachability to the peer. The PING frame contains no
@@ -1528,7 +1528,7 @@ alive when a stream is open. The default is to send a PING frame after 15
 seconds of quiescence. A PING frame has no additional fields.
 
 
-## CONNECTION_CLOSE frame {#frame-connection-close}
+### CONNECTION_CLOSE frame {#frame-connection-close}
 
 An endpoint sends a CONNECTION_CLOSE frame (type=0x02) to notify its peer that
 the connection is being closed.  If there are open streams that haven't been
@@ -1558,7 +1558,7 @@ The fields of a CONNECTION_CLOSE frame are as follows:
 * Reason Phrase: An optional human-readable explanation for why the connection
   was closed.
 
-## GOAWAY Frame {#frame-goaway}
+### GOAWAY Frame {#frame-goaway}
 
 An endpoint may use a GOAWAY frame (type=0x03) to notify its peer that the
 connection should stop being used, and will likely be closed in the future. The
