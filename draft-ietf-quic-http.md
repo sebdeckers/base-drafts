@@ -161,30 +161,35 @@ coordinate their experiments on the quic@ietf.org mailing list.
 
 # Stream Mapping and Usage {#stream-mapping}
 
-A QUIC stream provides reliable in-order delivery of bytes, but makes no
-guarantees about order of delivery with regard to bytes on other streams. On the
-wire, data is framed into QUIC STREAM frames, but this framing is invisible to
-the HTTP framing layer. A QUIC receiver buffers and orders received STREAM
-frames, exposing the data contained within as a reliable byte stream to the
-application.
+A QUIC stream provides reliable in-order delivery of bytes in one direction, but
+makes no guarantees about order of delivery with regard to bytes on other
+streams. On the wire, data is framed into QUIC STREAM frames, but this framing
+is invisible to the HTTP framing layer. A QUIC receiver buffers and orders
+received STREAM frames, exposing the data contained within as a reliable byte
+stream to the application.
 
-QUIC reserves Stream 1 for crypto operations (the handshake, crypto config
-updates). Stream 3 is reserved for sending and receiving HTTP control frames,
-and is analogous to HTTP/2's Stream 0.
+QUIC reserves Stream 1 in both directions for crypto operations (the handshake,
+crypto config updates). Stream 3 in both directions is reserved for sending and
+receiving HTTP control frames, and is analogous to HTTP/2's Stream 0. Stream 2
+MUST NOT be used.
 
 When HTTP headers and data are sent over QUIC, the QUIC layer handles most of
-the stream management. An HTTP request/response consumes a pair of streams: This
-means that the client's first request occurs on QUIC streams 5 and 7, the second
-on stream 9 and 11, and so on. The server's first push consumes streams 2 and 4.
-This amounts to the second least-significant bit differentiating the two streams
-in a request.
+the stream management. An HTTP request/response consumes a pair of streams in
+each direction: The client's first request occurs on QUIC streams 4 and 5, the
+second on stream 8 and 9, and so on. The server responds on the streams of the
+same ID in the opposite direction.
+
+Pushed resources consume a pair of streams from server to client. The server's
+first push consumes streams 6 and 7, the second 10 and 11, and so on. This
+amounts to the second least-significant bit differentiating client and server,
+and the least-significant bit differentiating the two streams in the request.
+Clients MUST NOT open streams with IDs allocated for server push.
 
 The lower-numbered stream is called the message control stream and carries
 frames related to the request/response, including HEADERS. The higher-numbered
 stream is the data stream and carries the request/response body with no
 additional framing. Note that a request or response without a body will cause
-this stream to be half-closed in the corresponding direction without
-transferring data.
+this stream to be closed without transferring data.
 
 Pairs of streams must be utilized sequentially, with no gaps.  The data stream
 is opened at the same time as the message control stream is opened and is closed
@@ -206,7 +211,7 @@ exempt from connection-level flow-control.
 ## HTTP Message Exchanges
 
 A client sends an HTTP request on a new pair of QUIC streams. A server sends an
-HTTP response on the same streams as the request.
+HTTP response on streams with the same Stream IDs as the request.
 
 An HTTP message (request or response) consists of:
 
@@ -223,10 +228,10 @@ response may contain zero or more header blocks on the control stream containing
 the message headers of informational (1xx) HTTP responses (see {{!RFC7230}},
 Section 3.2 and {{!RFC7231}}, Section 6.2).
 
-The data stream MUST be half-closed immediately after the transfer of the body.
-If the message does not contain a body, the corresponding data stream MUST still
-be half-closed without transferring any data. The "chunked" transfer encoding
-defined in Section 4.1 of {{!RFC7230}} MUST NOT be used.
+The data stream MUST be closed immediately after the transfer of the body. If
+the message does not contain a body, the corresponding data stream MUST still be
+closed without transferring any data. The "chunked" transfer encoding defined in
+Section 4.1 of {{!RFC7230}} MUST NOT be used.
 
 Trailing header fields are carried in an additional header block on the message
 control stream. Such a header block is a sequence of HEADERS frames with End
@@ -235,19 +240,16 @@ the trailers section; receivers MUST decode any subsequent header blocks in
 order to maintain HPACK decoder state, but the resulting output MUST be
 discarded.
 
-An HTTP request/response exchange fully consumes a pair of streams. After
-sending a request, a client closes the streams for sending; after sending a
-response, the server closes its streams for sending and the QUIC streams are
-fully closed.
+An HTTP request/response exchange fully consumes a pair of streams in each
+direction. After sending a request or a response, a peer closes its streams.
 
 A server can send a complete response prior to the client sending an entire
 request if the response does not depend on any portion of the request that has
 not been sent and received. When this is true, a server MAY request that the
 client abort transmission of a request without error by triggering a QUIC
-REQUEST_RST after sending a complete response and closing its stream. Clients
-MUST NOT discard complete responses as a result of receiving a REQUEST_RST,
-though clients can always discard responses at their discretion for other
-reasons.
+REQUEST_RST on the client's data stream. Clients MUST NOT discard complete
+responses as a result of receiving a REQUEST_RST, though clients can always
+discard responses at their discretion for other reasons.
 
 ### Header Compression
 
@@ -293,18 +295,19 @@ is successfully established, the proxy sends a HEADERS frame containing a 2xx
 series status code to the client, as defined in {{!RFC7231}}, Section 4.3.6, on
 the message control stream.
 
-All QUIC STREAM frames on the message data stream correspond to data sent on the
-TCP connection. Any QUIC STREAM frame sent by the client is transmitted by the
-proxy to the TCP server; data received from the TCP server is written to the
-data stream by the proxy. Note that the size and number of TCP segments is not
-guaranteed to map predictably to the size and number of QUIC STREAM frames.
+All QUIC STREAM frames on the message data streams correspond to data sent on
+the TCP connection. Any QUIC STREAM frame sent by the client is transmitted by
+the proxy to the TCP server; data received from the TCP server is written to the
+server's data stream by the proxy. Note that the size and number of TCP segments
+is not guaranteed to map predictably to the size and number of QUIC STREAM
+frames.
 
-The TCP connection can be closed by either peer. When the client half-closes the
-data stream, the proxy will set the FIN bit on its connection to the TCP server.
-When the proxy receives a packet with the FIN bit set, it will half-close the
+The TCP connection can be closed by either peer. When the client closes the data
+stream, the proxy will set the FIN bit on its connection to the TCP server. When
+the proxy receives a packet with the FIN bit set, it will close its
 corresponding data stream. TCP connections which remain half-closed in a single
 direction are not invalid, but are often handled poorly by servers, so clients
-SHOULD NOT half-close connections on which they are still expecting data.
+SHOULD NOT close connections on which they are still expecting data.
 
 A TCP connection error is signaled with RST_STREAM. A proxy treats any error in
 the TCP connection, which includes receiving a TCP segment with the RST bit set,
@@ -354,7 +357,7 @@ pushes via the SETTINGS_ENABLE_PUSH setting in the SETTINGS frame (see
 {{connection-establishment}}), which defaults to 1 (true).
 
 As with server push for HTTP/2, the server initiates a server push by sending a
-PUSH_PROMISE frame containing the StreamID of the stream to be pushed, as well
+PUSH_PROMISE frame containing the Stream ID of the stream to be pushed, as well
 as request header fields attributed to the request. The PUSH_PROMISE frame is
 sent on the control stream of the associated (client-initiated) request, while
 the Promised Stream ID field specifies the Stream ID of the control stream for
