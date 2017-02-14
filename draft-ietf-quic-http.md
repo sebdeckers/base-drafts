@@ -140,7 +140,7 @@ server's preference (with the first value being the most preferred version).
 Origins SHOULD list only versions which are supported by the alternative, but
 MAY omit supported versions for any reason.
 
-## QUIC-Only Origins
+## QUIC-Only Origins {#httpq}
 
 An HTTP endpoint where the authoritative endpoint is served over QUIC can be
 identified using the "httpq" URI scheme.
@@ -877,6 +877,20 @@ it contains.
 
 # IANA Considerations
 
+## Registration of "httpq" URI scheme
+
+IANA maintains the registry of URI Schemes {{?RFC4395}} at
+<http://www.iana.org/assignments/uri-schemes/>.
+
+This document defines the following URI schemes, so the "Permanent
+URI Schemes" registry has been updated accordingly.
+
+|------------|---------------------------------------|---------------|
+| URI Scheme | Description                           | Reference     |
+|------------|---------------------------------------|---------------|
+| httpq      | Hypertext Transfer Protocol over QUIC | {{httpq}}     |
+|------------|---------------------------------------|---------------|
+
 ## Registration of HTTP/QUIC Identification String
 
 This document creates a new registration for the identification of HTTP/QUIC in
@@ -959,6 +973,8 @@ The original authors of this specification were Robbie Shade and Mike Warres.
 
 - SETTINGS can be sent only one at the start of a connection.  SETTINGS_ACK
   removed.
+
+- "httpq" scheme added.
 
 ## Since draft-ietf-quic-http-00:
 
