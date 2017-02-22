@@ -21,21 +21,6 @@ author:
 
 normative:
 
-  QUIC-TLS:
-    title: "Using Transport Layer Security (TLS) to Secure QUIC"
-    date: {DATE}
-    author:
-      -
-        ins: M. Thomson
-        name: Martin Thomson
-        org: Mozilla
-        role: editor
-      -
-        ins: S. Turner, Ed.
-        name: Sean Turner
-        org: sn3rd
-        role: editor
-
   QUIC-TRANSPORT:
     title: "QUIC: A UDP-Based Multiplexed and Secure Transport"
     date: {DATE}
@@ -446,7 +431,7 @@ All frames have the following format:
    |                       Frame Payload (*)                     ...
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 ~~~~~~~~~~
-{: title="HTTP/QUIC frame format"}
+{: #fig-frame title="HTTP/QUIC frame format"}
 
 ## Frame Definitions {#frames}
 
@@ -485,7 +470,7 @@ of type HTTP_MALFORMED_HEADERS.
    |       Sequence? (16)          |    Header Block Fragment (*)...
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 ~~~~~~~~~~
-{: title="HEADERS frame payload"}
+{: #fig-headers title="HEADERS frame payload"}
 
 The HEADERS frame payload has the following fields:
 
@@ -533,7 +518,7 @@ The flags defined are:
    |   Weight (8)  |
    +-+-+-+-+-+-+-+-+
 ~~~~~~~~~~
-{: title="HEADERS frame payload"}
+{: #fig-priority title="PRIORITY frame payload"}
 
 The HEADERS frame payload has the following fields:
 
@@ -677,8 +662,8 @@ following values:
   - SETTINGS_MAX_HEADER_LIST_SIZE:  16,384 octets
 
 Servers MAY continue processing data from clients which exceed its current
-configuration during the initial flight.  In this case, the client MUST apply the new
-settings immediately upon receipt.
+configuration during the initial flight.  In this case, the client MUST apply
+the new settings immediately upon receipt.
 
 If the connection is closed because these or other constraints were violated
 during the 0-RTT flight (e.g. with HTTP_HPACK_DECOMPRESSION_FAILED), clients MAY
@@ -702,7 +687,7 @@ server to client, as in HTTP/2.  It defines no flags.
    |       Sequence? (16)          |         Header Block (*)    ...
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 ~~~~~~~~~~
-{: title="PUSH_PROMISE frame payload"}
+{: #fig-push-promise title="PUSH_PROMISE frame payload"}
 
 The payload consists of:
 
