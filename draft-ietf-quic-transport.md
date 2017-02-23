@@ -1109,8 +1109,6 @@ Some frames carry information about the sender's own streams; other frames carry
 feedback to a peer about the peer's streams.  Finally, some frames carry
 connection-level information only.
 
-Unknown frame types MUST be ignored.
-
 ## Sender Frames {#frames-sender}
 
 ### STREAM Frame {#frame-stream}
