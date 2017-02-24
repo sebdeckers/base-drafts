@@ -585,10 +585,9 @@ transmission of frames, so multiplexing is not blocked by this requirement.)
 A full header block is contained in a sequence of zero or more HEADERS frames
 without EHB set, followed by a HEADERS frame with EHB set.
 
-On receipt, header blocks (HEADERS, LINK with PushedRequest set) MUST be
-processed by the HPACK decoder in sequence. If a block is missing, all
-subsequent HPACK frames MUST be held until it arrives, or the connection
-terminated.
+On receipt, header blocks (HEADERS, PUSH_PROMISE) MUST be processed by the HPACK
+decoder in sequence. If a block is missing, all subsequent HPACK frames MUST be
+held until it arrives, or the connection terminated.
 
 When the Sequence counter reaches its maximum value (0xFFFF), the next increment
 returns it to zero.  An endpoint MUST NOT wrap the Sequence counter to zero
@@ -835,8 +834,8 @@ Frame type 0x8 is reserved.
 
 ### CONTINUATION frame
 
-CONTINUATION frames do not exist, since larger supported HEADERS/LINK frames
-provide equivalent functionality. Frame type 0x9 is reserved.
+CONTINUATION frames do not exist, since larger supported HEADERS/PUSH_PROMISE
+frames provide equivalent functionality. Frame type 0x9 is reserved.
 
 ### RESPONSE frame {#frame-response}
 
