@@ -357,14 +357,14 @@ A CONNECT request in HTTP/QUIC functions in a similar manner as in HTTP/2,
 establishing a bidirectional TCP connection over a pair of QUIC streams. The
 request MUST be formatted as described in {{!RFC7540}}, Section 8.3. A CONNECT
 request that does not conform to these restrictions is malformed. The message
-control stream carries a LINK frame indicating the client data stream which
+control stream carries a DATA frame indicating the client data stream which
 will carry the TCP traffic in the client-to-server direction.
 
 A proxy that supports CONNECT establishes a TCP connection ({{!RFC0793}}) to the
 server identified in the ":authority" pseudo-header field. Once this connection
 is successfully established, the proxy sends a HEADERS frame containing a 2xx
 series status code to the client, as defined in {{!RFC7231}}, Section 4.3.6, on
-the message control stream, followed by a LINK frame indicating the server data
+the message control stream, followed by a DATA frame indicating the server data
 stream which will carry the TCP traffic in the server-to-client direction.
 
 All QUIC STREAM frames on the message data streams correspond to data sent on
