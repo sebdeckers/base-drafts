@@ -1718,16 +1718,19 @@ using QUIC.
 
 Streams can be created unilaterally, can concurrently send data interleaved with
 other streams, and can be cancelled. QUIC's stream lifetime is modeled closely
-after HTTP/2's {{!RFC7540}}.  Streams are independent of each other in delivery
-order.  That is, data that is received on a stream is delivered in order within
-that stream, but there is no particular delivery order across streams.  Transmit
-ordering among streams is left to the implementation.  QUIC streams are
-considered lightweight in that the creation and destruction of streams are
-expected to have minimal bandwidth and computational cost.  A single STREAM
-frame may create, carry data for, and terminate a stream, or a stream may last
-the entire duration of a connection. Implementations are therefore advised to
-keep these extremes in mind and to implement stream creation and destruction to
-be as lightweight as possible.
+after HTTP/2's {{!RFC7540}}.
+
+Streams are independent of each other in delivery order.  That is, data that is
+received on a stream is delivered in order within that stream, but there is no
+particular delivery order across streams.  Transmit ordering among streams is
+left to the implementation.
+
+QUIC streams are considered lightweight in that the creation and destruction of
+streams are expected to have minimal bandwidth and computational cost.  A single
+STREAM frame may create, carry data for, and terminate a stream, or a stream may
+last the entire duration of a connection. Implementations are therefore advised
+to keep these extremes in mind and to implement stream creation and destruction
+to be as lightweight as possible.
 
 An alternative view of QUIC streams is as an elastic "message" abstraction,
 similar to the way ephemeral streams are used in SST {{SST}}, which may be a

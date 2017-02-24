@@ -61,7 +61,6 @@ informative:
 
   RFC3782:
   RFC6582:
-  RFC5827:
   RFC5682:
   RFC6937:
   I-D.dukkipati-tcpm-tcp-loss-probe:
@@ -287,51 +286,6 @@ follows:
    initial_rtt = kDefaultInitialRtt
 ~~~
 
-## Setting the Loss Detection Alarm
-
-QUIC loss detection uses a single alarm for all timer-based loss detection.  The
-duration of the alarm is based on the alarm's mode, which is set in the packet
-and timer events further below.  The function SetLossDetectionAlarm defined
-below shows how the single timer is set based on the alarm mode.
-
-Pseudocode for SetLossDetectionAlarm follows:
-
-~~~
- SetLossDetectionAlarm():
-    if (retransmittable packets are not outstanding):
-      loss_detection_alarm.cancel()
-      return
-
-    if (handshake packets are outstanding):
-      // Handshake retransmission alarm.
-      alarm_duration = max(1.5 * smoothed_rtt, kMinTLPTimeout)
-                         << handshake_count
-      handshake_count++;
-    else if (largest sent packet is acked):
-      // Early retransmit {{!RFC 5827}}
-      // with an alarm to reduce spurious retransmits.
-      alarm_duration = 0.25 * smoothed_rtt
-    else if (tlp_count < kMaxTLPs):
-      // Tail Loss Probe alarm.
-      if (retransmittable_packets_outstanding = 1):
-        alarm_duration = max(
-                           1.5 * smoothed_rtt + kDelayedAckTimeout,
-                           2 * smoothed_rtt)
-      else:
-        alarm_duration = max (kMinTLPTimeout, 2 * smoothed_rtt)
-      tlp_count++;
-    else:
-      // RTO alarm.
-      if (rto_count = 0):
-        alarm_duration = max(kMinRTOTimeout,
-                             smoothed_rtt + 4 * rttvar)
-      else:
-        alarm_duration = loss_detection_alarm.get_delay() << 1
-      rto_count++
-
-    loss_detection_alarm.set(now + alarm_duration)
-~~~
-
 ## On Sending a Packet
 
 After any packet is sent, be it a new transmission or a rebundled transmission,
@@ -445,7 +399,7 @@ in response to 0RTT packets.
 
 (Add sections for early retransmit and TLP/RTO here)
 
-### Psuedocode
+### Pseudocode
 
 Pseudocode for SetLossDetectionAlarm follows:
 
@@ -465,7 +419,7 @@ Pseudocode for SetLossDetectionAlarm follows:
       alarm_duration = alarm_duration << handshake_count
       handshake_count++;
     else if (largest sent packet is acked):
-      // Early retransmit {{!RFC 5827}}
+      // Early retransmit {{!RFC5827}}
       // with an alarm to reduce spurious retransmits.
       alarm_duration = 0.25 * smoothed_rtt
     else if (tlp_count < kMaxTLPs):
@@ -517,7 +471,7 @@ The receiver MUST trust protected acks for unprotected packets, however.  Aside
 from this, loss detection for handshake packets when an ack is processed is
 identical to other packets.
 
-### Psuedocode
+### Pseudocode
 
 DetectLostPackets takes one parameter, acked, which is the largest acked packet,
 and returns a list of packets detected as lost.
