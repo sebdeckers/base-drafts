@@ -169,28 +169,29 @@ received STREAM frames, exposing the data contained within as a reliable byte
 stream to the application.
 
 QUIC reserves Stream 1 in both directions for crypto operations (the handshake,
-crypto config updates). Stream 2 in both directions is reserved for sending and
-receiving HTTP control frames, and is analogous to HTTP/2's Stream 0.
+crypto config updates). Each subsequent stream begins with a one-byte identifier
+that describes the stream type; see {{stream-preface}} for more details.
+
+Stream 2 in both directions is reserved for sending and receiving HTTP control
+frames, and is analogous to Stream 0 in HTTP/2.  Since most connection-level
+concerns from HTTP/2 will be managed by QUIC, the primary use of Stream 2 will
+be for SETTINGS and PRIORITY frames.
 
 When HTTP headers and data are sent over QUIC, the QUIC layer handles most of
 the stream management. An HTTP request/response consumes up to two streams in
 each direction, with additional streams used by the server for promised
 responses.  Streams MUST be utilized sequentially by each peer, with no gaps.
 
-The first stream created on a request or response is called the message control
-stream and carries frames related to the request/response, including HEADERS.
-The message control stream for a response MUST begin with a LINK frame
-indicating the client's message control stream to which it responds, if any.
-Promised requests are carried by PUSH_PROMISE frames, which indicate the
-message control stream for the future response.
+The first stream created for a request or response is a message control stream
+and carries frames related to the request/response, including HEADERS. The
+message control stream for a response to a client request MUST begin with a
+RESPONSE frame indicating the client's message control stream to which it
+responds. Promised requests are carried by PUSH_PROMISE frames, which indicate
+the message control stream for the future response.
 
-For messages with bodies, a second stream is incorporated using a LINK frame.
-This stream is the data stream and carries the message body with no additional
+For messages with bodies, a second stream is incorporated using a DATA frame.
+This stream is a data stream and carries the message body with no additional
 framing.
-
-Server responses are correlated to the client's requests using LINK frames,
-which also replace PUSH_PROMISE in associating message control streams for
-secondary responses to the original response.
 
 For example, the set of interconnected streams of a request/response might look
 like this:
@@ -198,46 +199,78 @@ like this:
 ~~~~~~~~~~
 Client                                                  Server
 
-  Stream 21  ==============================================>
+  Stream 21 [Request Control] =============================>
     HEADERS [GET resource.html, etc.]
 
-  <=============================================  Stream 300
-    LINK [Delta=0, Direction=0, StreamReference=21]
-    LINK [Delta=1, Direction=1, PushedRequest=1,
-          StreamReference=1, HeaderBlock=[GET res.css]]
+  <==========================  Stream 300 [Response Control]
+    RESPONSE [Delta=0, Direction=0, StreamReference=21]
+    PUSH_PROMISE [Delta=1, Direction=1, StreamReference=1,
+          HeaderBlock=[GET res.css]]
     HEADERS [200, etc.]
-    LINK [Delta=1, Direction=1, StreamReference=2]
-    LINK [Delta=1, Direction=1, PushedRequest=1,
-          StreamReference=3, HeaderBlock=[GET scr.js]]
-  <=============================================  Stream 301
+    DATA [Delta=1, Direction=1, StreamReference=2]
+    PUSH_PROMISE [Delta=1, Direction=1, StreamReference=3,
+          HeaderBlock=[GET scr.js]]
+
+  <==============================  Stream 301 [Push Control]
     HEADERS [200, etc.]
-    LINK [Delta=1, Direction=1, StreamReference=3]
-  <=============================================  Stream 302
+    DATA [Delta=1, Direction=1, StreamReference=3]
+
+  <======================================  Stream 302 [Data]
     (body of resource.html)
-  <=============================================  Stream 303
+
+  <==============================  Stream 303 [Push Control]
     HEADERS [200, etc.]
-    LINK [Delta=1, Direction=1, StreamReference=2]
-  <=============================================  Stream 304
+    DATA [Delta=1, Direction=1, StreamReference=2]
+
+  <======================================  Stream 304 [Data]
     (body of res.css)
-  <=============================================  Stream 305
+
+  <======================================  Stream 305 [Data]
     (body of scr.js)
 ~~~~~~~~~~
 {: title="Example Stream Exchange"}
->>>>>>> 221c3bc... Set up the LINK frame
 
 HTTP does not need to do any separate multiplexing when using QUIC - data sent
 over a QUIC stream always maps to a particular HTTP transaction. Requests and
 responses are considered complete when the corresponding QUIC streams are
 closed.
 
-##  Stream 2: Connection Control Stream
+## Stream Type Identifier {#stream-preface}
 
-Since most connection-level concerns from HTTP/2 will be managed by QUIC, the
-primary use of Stream 2 will be for SETTINGS and PRIORITY frames.
+Each stream begins with a single byte identifying the stream type.  This permits
+safe processing of subsequent frames and correlation of requests and responses.
+The defined stream types are:
+
+Connection Control Stream (0x43):
+: Identifies the stream which will be used for connection-level control frames.
+This MUST be the type of Stream 2; any other stream of this type MUST be treated
+as a session error of type HTTP_DUPLICATE_CONTROL_STREAM.  The first frame on
+this stream MUST be a SETTINGS frame (see {{frame-settings}}).
+
+Request Control Stream (0x72):
+: Identifies the message control stream of an HTTP request from a client.
+The frames on this stream will carry a single HTTP request.
+
+Response Control Stream (0x52):
+: Identifies the message control stream of a server's response to a client's
+HTTP request.  The first frame on this stream MUST be a RESPONSE frame (see
+{{frame-response}}) identifying the control stream of an HTTP client's request.
+Subsequent frames on this stream will a single HTTP response.
+
+Push Control Stream (0x50):
+: Identifies the message control stream of a server's pushed response.  The
+frames on this stream will carry a single pushed HTTP response.
+
+Data Stream (0x44):
+: Identifies a data stream carrying the body of an HTTP request or response. The
+contents of this stream MUST NOT be interpreted as frames.  The body SHOULD NOT
+be interpreted in any way until the stream has been explicitly referenced by a
+DATA frame on a message control stream.
 
 ## HTTP Message Exchanges
 
-A client begins sending an HTTP request on a new QUIC stream.
+A client begins sending an HTTP request on a new QUIC stream, identifying the
+stream as a Request Control Stream.
 
 An HTTP message (request or response) consists of:
 
@@ -246,18 +279,18 @@ An HTTP message (request or response) consists of:
 
 2. optionally:
 
-    - the payload body (see {{!RFC7230}}, Section 3.3), sent on a new stream,
-      and
-    - a LINK frame on the control stream indicating the stream with the body
+    - the payload body (see {{!RFC7230}}, Section 3.3), sent on a new Data
+      Stream, and
+    - a DATA frame on the control stream indicating the associated Data Stream
 
 3. optionally, one header block on the control stream containing the
    trailer-part, if present (see {{!RFC7230}}, Section 4.1.2).
 
-In addition, prior to sending the message header block indicated above, a
-response contains:
+A response is sent on a Response Control Stream or a Push Control Stream.  Prior
+to sending the message header block indicated above, a response contains:
 
-  - a LINK frame indicating which client stream contained the original request,
-    if any
+  - a RESPONSE frame indicating which client stream contained the original
+    request, if any (not present for pushed responses)
   - zero or more header blocks on the control stream containing the message
     headers of informational (1xx) HTTP responses (see {{!RFC7230}}, Section
     3.2 and {{!RFC7231}}, Section 6.2)
@@ -307,7 +340,9 @@ for stream N+4 may have arrived.
 DISCUSS:
 : Keep HPACK with HOLB? Redesign HPACK to be order-invariant? How much
 do we need to retain compatibility with HTTP/2's HPACK?
-
+: This stream design presumes that control streams can be safely aborted, which
+is not true of HPACK.  Requires adopting an abort-safe header compression
+scheme.
 
 ### The CONNECT Method
 
@@ -353,6 +388,30 @@ as a stream error of type HTTP_CONNECT_ERROR ({{http-error-codes}}).
 Correspondingly, a proxy MUST send a TCP segment with the RST bit set if it
 detects an error with the stream or the QUIC connection.
 
+### Delta References {#stream-delta}
+
+As described in {{stream-mapping}}, an HTTP request and response can encompass
+one or more streams in each direction.  DATA, PUSH_PROMISE, and RESPONSE frames
+are used to correlate them.
+
+Because related streams will often be near each other in the Stream ID space,
+it will often be efficient to encode the referenced stream ID relative to
+the stream on which these frames are sent.  When this is the case, the Delta
+flag may be used to indicate that the Stream Reference field should be added to
+(Direction flag set) or subtracted from (Direction flag unset) the current
+Stream ID.
+
+If the stream indicated by a Delta Reference is not a valid QUIC stream number
+(e.g. a DATA frame on Stream 6 has the Delta flag set, the Direction flag unset,
+and a Stream Reference value of 100), the connection MUST be closed with an
+error of type HTTP_INVALID_STREAM_REFERENCE.
+
+Each stream may be referenced only once by another stream.  If a duplicate
+reference is detected, it MUST be treated as a stream error of type
+HTTP_DUPLICATE_REFERENCE on the referenced stream and all streams which
+reference it.
+
+
 ## Stream Priorities {#priority}
 
 HTTP/QUIC uses the priority scheme described in {{!RFC7540}} Section 5.3. In
@@ -396,17 +455,17 @@ pushes via the SETTINGS_ENABLE_PUSH setting in the SETTINGS frame (see
 {{connection-establishment}}), which defaults to 1 (true).
 
 Similar to server push for HTTP/2, the server initiates a server push by sending
-a LINK frame containing the Stream ID of the stream to be pushed, as well as
-request header fields attributed to the request. The LINK frame is sent on the
-control stream being used to respond to the request, with the Stream Reference
-field specifying the Stream ID of the control stream for the response.
+a PUSH_PROMISE frame containing the Stream ID of the stream to be pushed, as
+well as request header fields attributed to the request. The PUSH_PROMISE frame
+is sent on the control stream being used to respond to the request, with the
+Stream Reference field specifying the Stream ID of the control stream for the
+response.
 
 On that stream, the server push response is conveyed in the same way as a
 non-server-push response, with response headers and (if present) trailers
 carried by HEADERS frames sent on the control stream, and response body (if any)
-sent via the corresponding data stream.  No LINK frame is used to indicate a
-request stream, but a LINK frame is still used to indicate the data stream
-carrying the body, if present.
+sent via the corresponding data stream and indicated using a DATA frame.  No
+RESPONSE frame is used to indicate a request stream.
 
 If a promised push stream is not needed by the client, the client SHOULD send a
 QUIC REQUEST_RST on the promised stream with an appropriate error code (e.g.
@@ -455,9 +514,36 @@ All frames have the following format:
 
 ## Frame Definitions {#frames}
 
-### DATA
+### DATA {#frame-data}
 
-DATA frames do not exist.  Frame type 0x0 is reserved.
+The DATA frame (type=0x00) is used to identify the Data Stream on which the
+server intends to send the  body associated with an HTTP message.  It defines
+the following flags:
+
+Delta (0x01):
+: Indicates the length and interpretation of the Stream Reference field.
+
+Direction (0x02):
+: When the Delta flag is set, indicates whether the reference is to a higher
+(set) or lower (unset) Stream ID.  MUST NOT be set if the Delta flag is not set.
+
+~~~~~~~~~~
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                    Stream Reference (8/32)                  ...
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+~~~~~~~~~~
+{: #fig-data title="DATA frame payload"}
+
+The payload consists of:
+
+  Stream Reference:
+  : When the Delta flag is set, this field is 8 bits long and is relative to the
+    current Stream ID.  Otherwise, this field is 32 bits long and is an explicit
+    Stream ID.
+
+See {{stream-delta}} for more information about stream-to-stream references.
 
 ### HEADERS {#frame-headers}
 
@@ -689,13 +775,12 @@ are safe to retry are sent in 0-RTT.) If the connection was closed before the
 SETTINGS frame was received, clients SHOULD discard any cached values and use
 the defaults above on the next connection.
 
-### LINK {#frame-link}
+### PUSH_PROMISE {#frame-push-promise}
 
-The LINK frame (type=0x05) is used to associate the multiple streams which might
-be used in the course of making and responding to an HTTP request over QUIC.
-When server push is being used, it also carries a request header set from
-server to client, similar to PUSH_PROMISE in HTTP/2.  It defines the following
-flags:
+The PUSH_PROMISE frame (type=0x05) is used to carry a request header set from
+server to client, similar to PUSH_PROMISE in HTTP/2, and identify the Push
+Control Stream on which the server intends to send the response.  It defines the
+following flags:
 
 Delta (0x01):
 : Indicates the length and interpretation of the Stream Reference field.
@@ -704,20 +789,16 @@ Direction (0x02):
 : When the Delta flag is set, indicates whether the reference is to a higher
 (set) or lower (unset) Stream ID.  MUST NOT be set if the Delta flag is not set.
 
-PushedRequest (0x04):
-: When set, the LINK is to a pushed response, and the Sequence and Header Block
-fields are present.
-
 ~~~~~~~~~~
     0                   1                   2                   3
     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
    |                    Stream Reference (8/32)                  ...
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |        [Sequence (16)]        |      [Header Block (*)]     ...
+   |         Sequence (16)         |       Header Block (*)      ...
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 ~~~~~~~~~~
-{: #fig-link title="LINK frame payload"}
+{: #fig-push-promise title="PUSH_PROMISE frame payload"}
 
 The payload consists of:
 
@@ -727,41 +808,12 @@ The payload consists of:
     Stream ID.
 
   HPACK Sequence:
-  : A sixteen-bit counter, equivalent to the Sequence field in HEADERS.  Present
-    only if PushedRequest is set.
+  : A sixteen-bit counter, equivalent to the Sequence field in HEADERS.
 
   Header Block:
-  : HPACK-compressed request headers for the promised response.  Present only if
-    PushedRequest is set.
+  : HPACK-compressed request headers for the promised response.
 
-#### Stream-to-Stream References
-
-As described in {{stream-mapping}}, an HTTP request and response can encompass
-one or more streams in each direction.  LINK frames are used in the following
-ways:
-
-  - In both requests and responses:
-      - On the message control stream after the HEADERS frame, to indicate the
-        data stream carrying the body if one exists.
-  - In responses only:
-      - As the first frame on the server's message control stream, to indicate
-        the client's message control stream to which the response corresponds.
-      - With the PushedRequest flag set, to indicate the message control stream
-        and request headers of a pushed request.
-
-#### Delta References
-
-Because related streams will often be near each other in the Stream ID space,
-it will often be efficient to encode the referenced stream ID relative to
-the stream on which the LINK frame is sent.  When this is the case, the Delta
-flag may be used to indicate that the Stream Reference field should be added to
-(Direction flag set) or subtracted from (Direction flag unset) the current
-Stream ID.
-
-If the stream indicated by a Delta Reference is not a valid QUIC stream number
-(e.g. a LINK frame on Stream 6 has the Delta flag set, the Direction flag unset,
-and a Stream Reference value of 100), the connection MUST be closed with an
-error of type HTTP_INVALID_LINK_REFERENCE.
+See {{stream-delta}} for more information about stream-to-stream references.
 
 ### PING
 
@@ -785,6 +837,37 @@ Frame type 0x8 is reserved.
 
 CONTINUATION frames do not exist, since larger supported HEADERS/LINK frames
 provide equivalent functionality. Frame type 0x9 is reserved.
+
+### RESPONSE frame {#frame-response}
+
+The RESPONSE frame (type=0xB) is used by a server to identify the client's
+Request Control Stream to which the server is responding.  It defines the
+following flags:
+
+Delta (0x01):
+: Indicates the length and interpretation of the Stream Reference field.
+
+Direction (0x02):
+: When the Delta flag is set, indicates whether the reference is to a higher
+(set) or lower (unset) Stream ID.  MUST NOT be set if the Delta flag is not set.
+
+~~~~~~~~~~
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                    Stream Reference (8/32)                  ...
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+~~~~~~~~~~
+{: #fig-response title="RESPONSE frame payload"}
+
+The payload consists of:
+
+  Stream Reference:
+  : When the Delta flag is set, this field is 8 bits long and is relative to the
+    current Stream ID.  Otherwise, this field is 32 bits long and is an explicit
+    Stream ID.
+
+See {{stream-delta}} for more information about stream-to-stream references.
 
 
 # Error Handling {#errors}
@@ -835,9 +918,6 @@ HTTP_MALFORMED_PRIORITY (0x0A):
 HTTP_MALFORMED_SETTINGS (0x0B):
 : A SETTINGS frame has been received with an invalid format.
 
-HTTP_MALFORMED_LINK (0x0C):
-: A LINK frame has been received with an invalid format.
-
 HTTP_INTERRUPTED_HEADERS (0x0E):
 : A HEADERS frame without the End Header Block flag was followed by a frame
   other than HEADERS.
@@ -848,8 +928,16 @@ HTTP_SETTINGS_ON_WRONG_STREAM (0x0F):
 HTTP_MULTIPLE_SETTINGS (0x10):
 : More than one SETTINGS frame was received.
 
-HTTP_INVALID_LINK_REFERENCE (0x11):
-: A LINK frame referenced an invalid Stream ID.
+HTTP_INVALID_STREAM_REFERENCE (0x11):
+: A stream referenced an invalid Stream ID.  See {{stream-delta}} for more
+  details.
+
+HTTP_DUPLICATE_CONTROL_STREAM (0x12):
+: A stream other than Stream 2 was declared as a Connection Control Stream.
+
+HTTP_DUPLICATE_REFERENCE (0x13):
+: Multiple streams attempted to reference the same stream.  See {{stream-delta}}
+  for more details.
 
 ## Mapping HTTP/2 Error Codes
 
@@ -970,12 +1058,12 @@ Values for existing registrations are assigned by this document:
   |---------------|---------------------|-------------------------|
   | Frame Type    | Supported Protocols | HTTP/QUIC Specification |
   |---------------|:-------------------:|-------------------------|
-  | DATA          | HTTP/2 only         | N/A                     |
+  | DATA          | Both                | {{frame-data}}          |
   | HEADERS       | Both                | {{frame-headers}}       |
   | PRIORITY      | Both                | {{frame-priority}}      |
   | RST_STREAM    | HTTP/2 only         | N/A                     |
   | SETTINGS      | Both                | {{frame-settings}}      |
-  | PUSH_PROMISE  | Both                | {{frame-link}}          |
+  | PUSH_PROMISE  | Both                | {{frame-push-promise}}  |
   | PING          | HTTP/2 only         | N/A                     |
   | GOAWAY        | HTTP/2 only         | N/A                     |
   | WINDOW_UPDATE | HTTP/2 only         | N/A                     |
@@ -985,6 +1073,19 @@ Values for existing registrations are assigned by this document:
 The "Specification" column is renamed to "HTTP/2 specification" and is only
 required if the frame is supported over HTTP/2.
 
+One new frame type is added by this document:
+
+ Frame Type:
+ : RESPONSE
+
+ Code:
+ : 0x0B
+
+ Supported Protocols:
+ : HTTP/QUIC only
+
+ HTTP/QUIC Specification:
+ : {{frame-response}}
 
 --- back
 
